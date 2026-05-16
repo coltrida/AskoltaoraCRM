@@ -1,0 +1,144 @@
+{
+  "entities": {
+    "Patient": {
+      "title": "Patient",
+      "description": "Patient record from Excel",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nomeCompleto": { "type": "string" },
+        "cognome": { "type": "string" },
+        "nome": { "type": "string" },
+        "citta": { "type": "string" },
+        "cap": { "type": "string" },
+        "note": { "type": "string" },
+        "telefono": { "type": "string" },
+        "store": { "type": "string" },
+        "tipo": { "type": "string" }
+      },
+      "required": ["nomeCompleto", "store"]
+    },
+    "Call": {
+      "title": "Call",
+      "description": "Call record from Excel",
+      "type": "object",
+      "properties": {
+        "pazienteId": { "type": "string" },
+        "nome": { "type": "string" },
+        "note": { "type": "string" },
+        "data": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["nome", "data", "timestamp"]
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Appointment record from Excel",
+      "type": "object",
+      "properties": {
+        "pazienteId": { "type": "string" },
+        "nome": { "type": "string" },
+        "note": { "type": "string" },
+        "data": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["nome", "data", "timestamp"]
+    },
+    "Store": {
+      "title": "Store",
+      "description": "External structure record from Excel",
+      "type": "object",
+      "properties": {
+        "nome": { "type": "string" },
+        "indirizzo": { "type": "string" },
+        "citta": { "type": "string" },
+        "cap": { "type": "string" },
+        "telefono": { "type": "string" },
+        "tipo": { "type": "string" },
+        "note": { "type": "string" }
+      },
+      "required": ["nome"]
+    },
+    "StoreCap": {
+      "title": "StoreCap",
+      "description": "Association between a store and a CAP",
+      "type": "object",
+      "properties": {
+        "storeId": { "type": "string" },
+        "cap": { "type": "string" }
+      },
+      "required": ["storeId", "cap"]
+    },
+    "BudgetDistribution": {
+      "title": "BudgetDistribution",
+      "description": "Monthly distribution of revenue percentages",
+      "type": "object",
+      "properties": {
+        "year": { "type": "number" },
+        "percentages": { 
+          "type": "array",
+          "items": { "type": "number" }
+        }
+      },
+      "required": ["year", "percentages"]
+    },
+    "PersonBudget": {
+      "title": "PersonBudget",
+      "description": "Annual budget for an audioprotesista",
+      "type": "object",
+      "properties": {
+        "year": { "type": "number" },
+        "name": { "type": "string" },
+        "annualBudget": { "type": "number" }
+      },
+      "required": ["year", "name", "annualBudget"]
+    },
+    "PersonnelOrder": {
+      "title": "PersonnelOrder",
+      "description": "Custom display order of personnel names",
+      "type": "object",
+      "properties": {
+        "year": { "type": "number" },
+        "names": { 
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["year", "names"]
+    }
+  },
+  "firestore": {
+    "patients": {
+      "schema": "Patient",
+      "description": "Collection of patient records"
+    },
+    "calls": {
+      "schema": "Call",
+      "description": "Collection of call records"
+    },
+    "appointments": {
+      "schema": "Appointment",
+      "description": "Collection of appointment records"
+    },
+    "stores": {
+      "schema": "Store",
+      "description": "Collection of external structures"
+    },
+    "storeCaps": {
+      "schema": "StoreCap",
+      "description": "Collection of store-CAP associations"
+    },
+    "budgetDistributions": {
+      "schema": "BudgetDistribution",
+      "description": "Collection of monthly budget distributions"
+    },
+    "personnelBudgets": {
+      "schema": "PersonBudget",
+      "description": "Collection of annual budgets for personnel"
+    },
+    "personnelOrders": {
+      "schema": "PersonnelOrder",
+      "description": "Collection of custom display orders for personnel"
+    }
+  }
+}

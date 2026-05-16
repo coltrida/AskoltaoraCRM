@@ -1,0 +1,174 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: patients
+    // Fields:
+    //   - id: string (optional)
+    //   - nomeCompleto: string (required)
+    //   - cognome: string (optional)
+    //   - nome: string (optional)
+    //   - citta: string (optional)
+    //   - cap: string (optional)
+    //   - note: string (optional)
+    //   - telefono: string (optional)
+    //   - store: string (required)
+    //   - tipo: string (optional)
+    //
+    // Collection: calls
+    // Fields:
+    //   - pazienteId: string (optional)
+    //   - nome: string (required)
+    //   - note: string (optional)
+    //   - data: string (required)
+    //   - timestamp: number (required)
+    //
+    // Collection: appointments
+    // Fields:
+    //   - pazienteId: string (optional)
+    //   - nome: string (required)
+    //   - note: string (optional)
+    //   - data: string (required)
+    //   - timestamp: number (required)
+    //
+    // Collection: stores
+    // Fields:
+    //   - nome: string (required)
+    //   - indirizzo: string (optional)
+    //   - citta: string (optional)
+    //   - cap: string (optional)
+    //   - telefono: string (optional)
+    //   - tipo: string (optional)
+    //   - note: string (optional)
+    //
+    // Collection: storeCaps
+    // Fields:
+    //   - storeId: string (required)
+    //   - cap: string (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "coltrida@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidPatient(data) {
+      return hasRequiredFields(['nomeCompleto', 'store']) &&
+             data.nomeCompleto is string && data.nomeCompleto.size() < 500 &&
+             data.store is string && data.store.size() < 200;
+    }
+
+    function isValidCall(data) {
+      return hasRequiredFields(['nome', 'data', 'timestamp']) &&
+             data.nome is string && data.nome.size() < 500 &&
+             data.data is string && data.data.size() < 100 &&
+             data.timestamp is number;
+    }
+
+    function isValidAppointment(data) {
+      return hasRequiredFields(['nome', 'data', 'timestamp']) &&
+             data.nome is string && data.nome.size() < 500 &&
+             data.data is string && data.data.size() < 100 &&
+             data.timestamp is number;
+    }
+
+    function isValidStore(data) {
+      return hasRequiredFields(['nome']) &&
+             data.nome is string && data.nome.size() < 500;
+    }
+
+    function isValidStoreCap(data) {
+      return hasRequiredFields(['storeId', 'cap']) &&
+             data.storeId is string && data.storeId.size() < 100 &&
+             data.cap is string && data.cap.size() < 10;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    match /patients/{patientId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidPatient(request.resource.data);
+      allow update: if isAuthenticated() && isValidPatient(request.resource.data);
+      allow delete: if isAuthenticated();
+    }
+
+    match /calls/{callId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidCall(request.resource.data);
+      allow update: if isAuthenticated() && isValidCall(request.resource.data);
+      allow delete: if isAuthenticated();
+    }
+
+    match /appointments/{appointmentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidAppointment(request.resource.data);
+      allow update: if isAuthenticated() && isValidAppointment(request.resource.data);
+      allow delete: if isAuthenticated();
+    }
+
+    match /stores/{storeId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidStore(request.resource.data);
+      allow update: if isAuthenticated() && isValidStore(request.resource.data);
+      allow delete: if isAuthenticated();
+    }
+
+    match /storeCaps/{storeCapId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidStoreCap(request.resource.data);
+      allow update: if isAuthenticated() && isValidStoreCap(request.resource.data);
+      allow delete: if isAuthenticated();
+    }
+
+    match /budgetDistributions/{distId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /personnelBudgets/{budgetId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /personnelOrders/{orderId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow create, update: if isAdmin();
+    }
+
+    match /test/{docId} {
+      allow read: if isAuthenticated();
+    }
+  }
+}
