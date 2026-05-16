@@ -556,6 +556,7 @@ export default function App() {
 
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [isBudgetSummaryOpen, setIsBudgetSummaryOpen] = useState(false);
+  const [appointmentsAnalysisView, setAppointmentsAnalysisView] = useState<'canali' | 'tipi'>('canali');
 
   // Budget states
   const [monthlyDistribution, setMonthlyDistribution] = useState<number[]>(new Array(12).fill(0).map((_, i) => [8, 7, 9, 8, 9, 8, 7, 6, 9, 10, 10, 9][i])); // Default values
@@ -742,8 +743,6 @@ export default function App() {
     // Filter by year and requested conditions
     // models/appointments.fields.appointment_result = "Si è presentato"
     // Tipo = "controllo udito" or "Prima Visita"
-    const excludedStores = ['genova', 'domicilio - genova', 'fabriano', 'roma - pallavicini', 'domicilio - roma pallavicini', 'civitanova marche', 'viareggio', 'aprilia'];
-
     const filtered = appointmentsData.filter(a => {
       if (a.year !== selectedApptYear) return false;
       
@@ -753,43 +752,40 @@ export default function App() {
       const matchEsito = esito === 'si è presentato' || esito === 'si e presentato' || esito === 'presentato';
       const matchTipo = tipo === 'controllo udito' || tipo === 'prima visita';
       
-      const store = String(a.sede || '').toLowerCase().trim();
-      if (excludedStores.includes(store)) return false;
-
       return matchEsito && matchTipo;
     });
 
-    // Group by Audioprotesista, then by Channel
+    // Group by Audioprotesista, then by selected subGroup
     const stats = new Map<string, {
       name: string,
       months: number[], // Count per month
-      channels: Map<string, number[]> // Channel -> Month counts
+      subGroups: Map<string, number[]> // Channel or Type -> Month counts
     }>();
 
     filtered.forEach(a => {
       const pro = a.audioprotesista || 'Da assegnare';
-      const channel = a.canale || 'N/D';
+      const subGroupValue = appointmentsAnalysisView === 'canali' ? (a.canale || 'N/D') : (a.contactType || 'N/D');
       const month = a.month;
 
       if (!stats.has(pro)) {
         stats.set(pro, {
           name: pro,
           months: new Array(12).fill(0),
-          channels: new Map()
+          subGroups: new Map()
         });
       }
 
       const proStats = stats.get(pro)!;
       proStats.months[month]++;
 
-      if (!proStats.channels.has(channel)) {
-        proStats.channels.set(channel, new Array(12).fill(0));
+      if (!proStats.subGroups.has(subGroupValue)) {
+        proStats.subGroups.set(subGroupValue, new Array(12).fill(0));
       }
-      proStats.channels.get(channel)![month]++;
+      proStats.subGroups.get(subGroupValue)![month]++;
     });
 
     return Array.from(stats.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [appointmentsData, selectedApptYear]);
+  }, [appointmentsData, selectedApptYear, appointmentsAnalysisView]);
 
   const screeningEntrancesAnalysis = useMemo(() => {
     if (appointmentsData.length === 0) return [];
@@ -2215,6 +2211,94 @@ export default function App() {
         subtitle,
         data: data.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)),
         type: drillDownType
+      });
+    }
+  };
+
+  const handleAppointmentsDrillDown = (audioprotesista: string | null, monthIdx: number, subGroupValue?: string) => {
+    const isFullYear = monthIdx === -1;
+    const title = audioprotesista || 'Tutti gli Audioprotesisti';
+    let subtitle = `${isFullYear ? 'Totale' : MONTHS[monthIdx]} ${selectedApptYear}`;
+    
+    if (subGroupValue) {
+      subtitle += ` • ${appointmentsAnalysisView === 'canali' ? 'Canale' : 'Tipo'}: ${subGroupValue}`;
+    }
+
+    const data = appointmentsData.filter(a => {
+      if (a.year !== selectedApptYear) return false;
+      if (!isFullYear && a.month !== monthIdx) return false;
+      
+      const esito = String(a.esito || '').toLowerCase().trim();
+      const tipo = String(a.tipo || '').toLowerCase().trim();
+      
+      const matchEsito = esito === 'si è presentato' || esito === 'si e presentato' || esito === 'presentato';
+      const matchTipo = tipo === 'controllo udito' || tipo === 'prima visita';
+      
+      if (!matchEsito || !matchTipo) return false;
+
+      if (audioprotesista) {
+        const pro = a.audioprotesista || 'Da assegnare';
+        if (pro !== audioprotesista) return false;
+      }
+
+      if (subGroupValue) {
+        const itemSubGroup = appointmentsAnalysisView === 'canali' ? (a.canale || 'N/D') : (a.contactType || 'N/D');
+        if (itemSubGroup !== subGroupValue) return false;
+      }
+
+      return true;
+    });
+
+    if (data.length > 0) {
+      setChannelDrillDown({
+        title,
+        subtitle,
+        data: data.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)),
+        type: 'appointments'
+      });
+    }
+  };
+
+  const handleScreeningDrillDown = (audioprotesista: string | null, monthIdx: number, storeValue?: string) => {
+    const isFullYear = monthIdx === -1;
+    const title = audioprotesista || 'Tutti gli Audioprotesisti';
+    let subtitle = `${isFullYear ? 'Totale' : MONTHS[monthIdx]} ${selectedScreeningYear}`;
+    
+    if (storeValue) {
+      subtitle += ` • Store: ${storeValue}`;
+    }
+
+    const data = appointmentsData.filter(a => {
+      if (a.year !== selectedScreeningYear) return false;
+      if (!isFullYear && a.month !== monthIdx) return false;
+      
+      const esito = String(a.esito || '').toLowerCase().trim();
+      const tipo = String(a.tipo || '').toLowerCase().trim();
+      
+      const matchEsito = esito === 'si è presentato' || esito === 'si e presentato' || esito === 'presentato';
+      const matchTipo = tipo === 'controllo udito' || tipo === 'prima visita';
+      
+      if (!matchEsito || !matchTipo) return false;
+
+      if (audioprotesista) {
+        const pro = a.audioprotesista || 'Da assegnare';
+        if (pro !== audioprotesista) return false;
+      }
+
+      if (storeValue) {
+        const itemStore = a.sede || 'N/D';
+        if (itemStore !== storeValue) return false;
+      }
+
+      return true;
+    });
+
+    if (data.length > 0) {
+      setChannelDrillDown({
+        title,
+        subtitle,
+        data: data.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)),
+        type: 'appointments'
       });
     }
   };
@@ -3686,9 +3770,12 @@ export default function App() {
   };
 
   const findContattiChiamati = () => {
+    const excludedStores = ['alba', 'cuneo', 'saluzzo', 'mondovi', 'mondovì', 'grosseto', 'savigliano', 'castel del piano', 'orbetello'];
     const results = patientsData.filter(p => {
       const tipo = String(p.tipo || '').toLowerCase().trim();
-      return tipo === 'contatto chiamato';
+      const store = String(p.store || '').toLowerCase().trim();
+      const isExcluded = excludedStores.some(s => store.includes(s));
+      return tipo === 'contatto chiamato' && !isExcluded;
     });
 
     const normalizeId = (id: any): string | undefined => {
@@ -3766,6 +3853,12 @@ export default function App() {
         classification,
         classificationReason
       };
+    });
+
+    processedResults.sort((a, b) => {
+      const storeA = String(a.store || '').toLowerCase().trim();
+      const storeB = String(b.store || '').toLowerCase().trim();
+      return storeA.localeCompare(storeB);
     });
 
     setVerificationResults(processedResults);
@@ -4660,7 +4753,7 @@ export default function App() {
     const worksheet = workbook.addWorksheet(`Appuntamenti ${selectedApptYear}`);
 
     const columns = [
-      { header: 'Audioprotesista / Canale', key: 'label', width: 40 },
+      { header: appointmentsAnalysisView === 'canali' ? 'Audioprotesista / Canale' : 'Audioprotesista / Tipo', key: 'label', width: 40 },
       ...MONTH_NAMES.map((m, i) => ({ header: m, key: `m${i}`, width: 12 })),
       { header: 'TOTALE', key: 'total', width: 15 }
     ];
@@ -4692,12 +4785,12 @@ export default function App() {
       });
 
       // Add Channel rows
-      Array.from(pro.channels.entries()).forEach(([channel, channelMonths]) => {
+      Array.from(pro.subGroups.entries()).forEach(([subGroup, subGroupMonths]) => {
         const chanRowData: any = {
-          label: `  ${channel}`,
-          total: channelMonths.reduce((a, b) => a + b, 0)
+          label: `  ${subGroup}`,
+          total: subGroupMonths.reduce((a, b) => a + b, 0)
         };
-        channelMonths.forEach((count, i) => {
+        subGroupMonths.forEach((count, i) => {
           chanRowData[`m${i}`] = count || 0;
         });
 
@@ -6401,10 +6494,24 @@ export default function App() {
                 <Calendar size={32} /> Gestione Appuntamenti
               </h2>
               <p className="text-sm opacity-60 max-w-xl">
-                Analisi degli appuntamenti confermati (Si è presentato) per audioprotesista e canale marketing.
+                Analisi degli appuntamenti confermati (Si è presentato) per audioprotesista e {appointmentsAnalysisView === 'canali' ? 'canale marketing' : 'tipo di contatto'}.
               </p>
             </div>
             <div className="flex items-center gap-4">
+              <div className="flex items-center bg-gray-100 p-1 border border-[#141414] mt-5">
+                <button
+                  onClick={() => setAppointmentsAnalysisView('canali')}
+                  className={`px-4 py-2 text-[10px] uppercase tracking-widest font-bold transition-all ${appointmentsAnalysisView === 'canali' ? 'bg-[#141414] text-white' : 'text-gray-500 hover:text-black'}`}
+                >
+                  Canali
+                </button>
+                <button
+                  onClick={() => setAppointmentsAnalysisView('tipi')}
+                  className={`px-4 py-2 text-[10px] uppercase tracking-widest font-bold transition-all ${appointmentsAnalysisView === 'tipi' ? 'bg-[#141414] text-white' : 'text-gray-500 hover:text-black'}`}
+                >
+                  Tipi
+                </button>
+              </div>
               <div className="flex flex-col gap-1">
                 <label className="text-[10px] uppercase tracking-widest opacity-50">Anno di riferimento</label>
                 <div className="flex items-center border border-[#141414] bg-white">
@@ -6434,7 +6541,7 @@ export default function App() {
             <table className="w-full border-collapse border border-[#141414] text-[10px]">
               <thead>
                 <tr className="bg-[#141414] text-white uppercase tracking-widest">
-                  <th className="border border-[#141414] p-2 text-left w-64">Audioprotesista / Canale</th>
+                  <th className="border border-[#141414] p-2 text-left w-64">{appointmentsAnalysisView === 'canali' ? 'Audioprotesista / Canale' : 'Audioprotesista / Tipo'}</th>
                   {MONTH_NAMES.map(m => (
                     <th key={m} className="border border-[#141414] p-2 text-center w-16">{m}</th>
                   ))}
@@ -6450,26 +6557,40 @@ export default function App() {
                           <Users size={14} /> {pro.name}
                         </td>
                         {pro.months.map((count, mIdx) => (
-                          <td key={mIdx} className="border border-[#141414] p-3 text-center text-sm">
+                          <td 
+                            key={mIdx} 
+                            className={`border border-[#141414] p-3 text-center text-sm ${count > 0 ? 'cursor-pointer hover:bg-gray-300 hover:text-blue-600 transition-colors' : ''}`}
+                            onClick={() => count > 0 && handleAppointmentsDrillDown(pro.name, mIdx)}
+                          >
                             {count || '-'}
                           </td>
                         ))}
-                        <td className="border border-[#141414] p-3 text-center text-sm bg-gray-300">
+                        <td 
+                          className={`border border-[#141414] p-3 text-center text-sm bg-gray-300 ${pro.months.reduce((a, b) => a + b, 0) > 0 ? 'cursor-pointer hover:bg-gray-400 hover:text-blue-600 transition-colors' : ''}`}
+                          onClick={() => pro.months.reduce((a, b) => a + b, 0) > 0 && handleAppointmentsDrillDown(pro.name, -1)}
+                        >
                           {pro.months.reduce((a, b) => a + b, 0)}
                         </td>
                       </tr>
-                      {Array.from(pro.channels.entries()).map(([channel, channelMonths], cIdx) => (
+                      {Array.from(pro.subGroups.entries()).map(([subGroup, subGroupMonths], cIdx) => (
                         <tr key={`${idx}-${cIdx}`} className="hover:bg-gray-50 border-b border-gray-100 italic">
                           <td className="border border-[#141414] p-2 pl-8 opacity-70">
-                            {channel}
+                            {subGroup}
                           </td>
-                          {channelMonths.map((count, mIdx) => (
-                            <td key={mIdx} className="border border-[#141414] p-2 text-center opacity-70">
+                          {subGroupMonths.map((count, mIdx) => (
+                            <td 
+                              key={mIdx} 
+                              className={`border border-[#141414] p-2 text-center opacity-70 ${count > 0 ? 'cursor-pointer hover:bg-gray-200 hover:text-blue-600 transition-colors' : ''}`}
+                              onClick={() => count > 0 && handleAppointmentsDrillDown(pro.name, mIdx, subGroup)}
+                            >
                               {count || '-'}
                             </td>
                           ))}
-                          <td className="border border-[#141414] p-2 text-center opacity-70 bg-gray-50">
-                            {channelMonths.reduce((a, b) => a + b, 0)}
+                          <td 
+                            className={`border border-[#141414] p-2 text-center opacity-70 bg-gray-50 ${subGroupMonths.reduce((a, b) => a + b, 0) > 0 ? 'cursor-pointer hover:bg-gray-200 hover:text-blue-600 transition-colors' : ''}`}
+                            onClick={() => subGroupMonths.reduce((a, b) => a + b, 0) > 0 && handleAppointmentsDrillDown(pro.name, -1, subGroup)}
+                          >
+                            {subGroupMonths.reduce((a, b) => a + b, 0)}
                           </td>
                         </tr>
                       ))}
@@ -6492,12 +6613,22 @@ export default function App() {
                     {Array.from({ length: 12 }).map((_, mIdx) => {
                       const monthTotal = appointmentsAnalysis.reduce((sum, pro) => sum + (pro.months[mIdx] || 0), 0);
                       return (
-                        <td key={mIdx} className="border border-[#141414] p-3 text-center">
+                        <td 
+                          key={mIdx} 
+                          className={`border border-[#141414] p-3 text-center ${monthTotal > 0 ? 'cursor-pointer hover:bg-gray-800 hover:text-blue-400 transition-colors' : ''}`}
+                          onClick={() => monthTotal > 0 && handleAppointmentsDrillDown(null, mIdx)}
+                        >
                           {monthTotal || '-'}
                         </td>
                       );
                     })}
-                    <td className="border border-[#141414] p-3 text-center bg-gray-700">
+                    <td 
+                      className="border border-[#141414] p-3 text-center bg-gray-700 cursor-pointer hover:bg-gray-600 hover:text-blue-400 transition-colors"
+                      onClick={() => {
+                        const total = appointmentsAnalysis.reduce((total, pro) => total + pro.months.reduce((a, b) => a + b, 0), 0);
+                        if (total > 0) handleAppointmentsDrillDown(null, -1);
+                      }}
+                    >
                       {appointmentsAnalysis.reduce((total, pro) => total + pro.months.reduce((a, b) => a + b, 0), 0)}
                     </td>
                   </tr>
@@ -6563,11 +6694,18 @@ export default function App() {
                           <Users size={14} /> {pro.name}
                         </td>
                         {pro.months.map((count, mIdx) => (
-                          <td key={mIdx} className="border border-[#141414] p-3 text-center text-sm">
+                          <td 
+                            key={mIdx} 
+                            className={`border border-[#141414] p-3 text-center text-sm ${count > 0 ? 'cursor-pointer hover:bg-gray-300 hover:text-blue-600 transition-colors' : ''}`}
+                            onClick={() => count > 0 && handleScreeningDrillDown(pro.name, mIdx)}
+                          >
                             {count || '-'}
                           </td>
                         ))}
-                        <td className="border border-[#141414] p-3 text-center text-sm bg-gray-300">
+                        <td 
+                          className={`border border-[#141414] p-3 text-center text-sm bg-gray-300 ${pro.months.reduce((a, b) => a + b, 0) > 0 ? 'cursor-pointer hover:bg-gray-400 hover:text-blue-600 transition-colors' : ''}`}
+                          onClick={() => pro.months.reduce((a, b) => a + b, 0) > 0 && handleScreeningDrillDown(pro.name, -1)}
+                        >
                           {pro.months.reduce((a, b) => a + b, 0)}
                         </td>
                       </tr>
@@ -6577,11 +6715,18 @@ export default function App() {
                             {store}
                           </td>
                           {storeMonths.map((count, mIdx) => (
-                            <td key={mIdx} className="border border-[#141414] p-2 text-center opacity-70">
+                            <td 
+                              key={mIdx} 
+                              className={`border border-[#141414] p-2 text-center opacity-70 ${count > 0 ? 'cursor-pointer hover:bg-gray-200 hover:text-blue-600 transition-colors' : ''}`}
+                              onClick={() => count > 0 && handleScreeningDrillDown(pro.name, mIdx, store)}
+                            >
                               {count || '-'}
                             </td>
                           ))}
-                          <td className="border border-[#141414] p-2 text-center opacity-70 bg-gray-50">
+                          <td 
+                            className={`border border-[#141414] p-2 text-center opacity-70 bg-gray-50 ${storeMonths.reduce((a, b) => a + b, 0) > 0 ? 'cursor-pointer hover:bg-gray-200 hover:text-blue-600 transition-colors' : ''}`}
+                            onClick={() => storeMonths.reduce((a, b) => a + b, 0) > 0 && handleScreeningDrillDown(pro.name, -1, store)}
+                          >
                             {storeMonths.reduce((a, b) => a + b, 0)}
                           </td>
                         </tr>
@@ -6605,12 +6750,22 @@ export default function App() {
                     {Array.from({ length: 12 }).map((_, mIdx) => {
                       const monthTotal = screeningEntrancesAnalysis.reduce((sum, pro) => sum + (pro.months[mIdx] || 0), 0);
                       return (
-                        <td key={mIdx} className="border border-[#141414] p-3 text-center">
+                        <td 
+                          key={mIdx} 
+                          className={`border border-[#141414] p-3 text-center ${monthTotal > 0 ? 'cursor-pointer hover:bg-gray-800 hover:text-blue-400 transition-colors' : ''}`}
+                          onClick={() => monthTotal > 0 && handleScreeningDrillDown(null, mIdx)}
+                        >
                           {monthTotal || '-'}
                         </td>
                       );
                     })}
-                    <td className="border border-[#141414] p-3 text-center bg-gray-700">
+                    <td 
+                      className="border border-[#141414] p-3 text-center bg-gray-700 cursor-pointer hover:bg-gray-600 hover:text-blue-400 transition-colors"
+                      onClick={() => {
+                        const total = screeningEntrancesAnalysis.reduce((total, pro) => total + pro.months.reduce((a, b) => a + b, 0), 0);
+                        if (total > 0) handleScreeningDrillDown(null, -1);
+                      }}
+                    >
                       {screeningEntrancesAnalysis.reduce((total, pro) => total + pro.months.reduce((a, b) => a + b, 0), 0)}
                     </td>
                   </tr>
@@ -8867,6 +9022,7 @@ export default function App() {
                       <>
                         <th className="p-2">Tipo</th>
                         <th className="p-2">Esito</th>
+                        <th className="p-2">Store</th>
                       </>
                     )}
                     {channelDrillDown.type === 'trials' && (
@@ -8898,6 +9054,7 @@ export default function App() {
                         <>
                           <td className="p-2">{item.tipo || 'N/D'}</td>
                           <td className="p-2">{item.contatto || 'N/D'}</td>
+                          <td className="p-2">{item.sede || 'N/D'}</td>
                         </>
                       )}
                       {channelDrillDown.type === 'trials' && (
