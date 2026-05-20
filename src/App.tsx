@@ -6042,7 +6042,7 @@ export default function App() {
           </div>
         </div>
       ) : activeTab === 'patients' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-12">
           {/* Sidebar / Upload Section Patients */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white border border-[#141414] p-6">
@@ -6142,7 +6142,7 @@ export default function App() {
           </div>
 
           {/* Patients List Section */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-3">
             <div className="bg-white border border-[#141414] overflow-hidden">
               <div className="p-6 border-b border-[#141414] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h2 className="font-serif italic text-xl">Pazienti da Chiamare (Priorità)</h2>
