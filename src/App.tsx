@@ -30,7 +30,8 @@ import {
   X,
   Info,
   Store,
-  Warehouse
+  Warehouse,
+  MessageSquare
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Tooltip } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
@@ -448,6 +449,38 @@ function ComparisonTable({ data, years, onCellClick, comparisonType }: { data: a
 export default function App() {
   const [activeTab, setActiveTab] = useState<'sales' | 'patients' | 'appointmentsManagement' | 'screeningEntrances' | 'noah' | 'comparisons' | 'cap' | 'recapiti' | 'verifiche' | 'channels' | 'audioAnalysis' | 'openTrials' | 'budget'>('patients');
 
+  const [isAutomationRunning, setIsAutomationRunning] = useState(false);
+
+  const runAutomationScript = async () => {
+    try {
+      setIsAutomationRunning(true);
+      const res = await fetch('http://localhost:3001/api/run-automation', { method: 'POST' });
+      const data = await res.json();
+      if (!data.success) {
+        alert(data.message || 'Errore durante l\'avvio dello script');
+        setIsAutomationRunning(false);
+      } else {
+        const checkStatus = setInterval(async () => {
+          try {
+            const statusRes = await fetch('http://localhost:3001/api/automation-status');
+            const statusData = await statusRes.json();
+            if (!statusData.isRunning) {
+              clearInterval(checkStatus);
+              setIsAutomationRunning(false);
+              alert('Automazione Excel completata!');
+            }
+          } catch (e) {
+            clearInterval(checkStatus);
+            setIsAutomationRunning(false);
+          }
+        }, 3000);
+      }
+    } catch (err) {
+      alert('Impossibile contattare il server. Assicurati che "npm run dev:all" o il server.js sia in esecuzione.');
+      setIsAutomationRunning(false);
+    }
+  };
+
   const [salesData, setSalesData] = useState<any[]>([]);
   const [creditNotes, setCreditNotes] = useState<any[]>([]);
   const [trialsData, setTrialsData] = useState<any[]>([]);
@@ -531,6 +564,11 @@ export default function App() {
   const [showStoreDropdown, setShowStoreDropdown] = useState<boolean>(false);
   const [showCapFilterDropdown, setShowCapFilterDropdown] = useState<boolean>(false);
   const [selectedMonths, setSelectedMonths] = useState<number>(3);
+  const [isWhatsappModalOpen, setIsWhatsappModalOpen] = useState<boolean>(false);
+  const [whatsappTemplate, setWhatsappTemplate] = useState<string>(
+    "Gentile {Nome} {Cognome}, la contattiamo dal centro di prevenzione acustica..."
+  );
+  const [sentWhatsappIds, setSentWhatsappIds] = useState<string[]>([]);
   const [selectedAudioPro, setSelectedAudioPro] = useState<string>('');
   const [selectedAudioYear, setSelectedAudioYear] = useState<number>(new Date().getFullYear());
   const [visibleDepositi, setVisibleDepositi] = useState<string[]>([]);
@@ -989,6 +1027,31 @@ export default function App() {
     salesData.forEach(s => s.canale && s.canale !== 'N/D' && channels.add(s.canale));
     return Array.from(channels).sort();
   }, [patientsData, callsData, appointmentsData, trialsData, salesData]);
+
+  const formatWhatsappNumber = (num: string): string => {
+    let cleaned = num.replace(/\s+/g, '').replace(/[-()]/g, '');
+    if (!cleaned) return '';
+    if (cleaned.startsWith('+')) {
+      cleaned = cleaned.substring(1);
+    }
+    if (cleaned.startsWith('3') && cleaned.length === 10) {
+      cleaned = '39' + cleaned;
+    }
+    return cleaned;
+  };
+
+  const whatsappTargetPatients = useMemo(() => {
+    if (!selectedPatientType || patientsData.length === 0) return [];
+    return patientsData.filter(p => {
+      let matches = true;
+      matches = matches && String(p.tipo || '').toLowerCase().trim() === selectedPatientType.toLowerCase().trim();
+      if (selectedBranch) {
+        matches = matches && String(p.store || '').toLowerCase().trim() === selectedBranch.toLowerCase().trim();
+      }
+      matches = matches && !!String(p.telefono || '').trim();
+      return matches;
+    });
+  }, [patientsData, selectedPatientType, selectedBranch]);
 
   const channelAnalysis = useMemo(() => {
     if (selectedChannels.length === 0) return null;
@@ -5386,7 +5449,24 @@ export default function App() {
       <header className="mb-12 border-b border-[#141414] pb-8">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
-            <h1 className="text-5xl font-bold tracking-tighter mb-4">AskoltaOra</h1>
+            <div className="flex items-center gap-4 mb-4">
+              <h1 className="text-5xl font-bold tracking-tighter">AskoltaOra</h1>
+              <button 
+                onClick={runAutomationScript}
+                disabled={isAutomationRunning}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 text-sm font-bold uppercase tracking-widest text-[#E4E3E0] bg-[#141414] hover:bg-gray-800 transition-colors disabled:opacity-50",
+                  isAutomationRunning && "animate-pulse"
+                )}
+                title="Esegui lo script automatico Puppeteer"
+              >
+                {isAutomationRunning ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> In Esecuzione...</>
+                ) : (
+                  <><Download className="w-4 h-4" /> Estrai Dati CRM</>
+                )}
+              </button>
+            </div>
             <div className="flex gap-6 mb-4">
               <button 
                 onClick={() => setActiveTab('sales')}
@@ -6307,6 +6387,19 @@ export default function App() {
                       className="px-6 py-2 border border-[#141414] text-[#141414] text-[10px] uppercase tracking-widest font-bold transition-all hover:bg-gray-100 active:scale-95"
                     >
                       Reset
+                    </button>
+                    <button
+                      onClick={() => setIsWhatsappModalOpen(true)}
+                      disabled={!selectedPatientType || whatsappTargetPatients.length === 0}
+                      className={cn(
+                        "px-6 py-2 border border-emerald-600 text-emerald-700 bg-emerald-50/30 text-[10px] uppercase tracking-widest font-bold transition-all flex items-center gap-2",
+                        (!selectedPatientType || whatsappTargetPatients.length === 0)
+                          ? "opacity-30 cursor-not-allowed border-[#141414] text-[#141414] bg-transparent"
+                          : "hover:bg-emerald-600 hover:text-white active:scale-95"
+                      )}
+                    >
+                      <MessageSquare size={14} />
+                      WhatsApp {whatsappTargetPatients.length > 0 ? `(${whatsappTargetPatients.length})` : ''}
                     </button>
                     <button
                       onClick={handleGeocodePatients}
@@ -9921,6 +10014,150 @@ export default function App() {
                 <p>• <span className="font-bold">Media Vendita:</span> Fatturato Netto (Vendite - Storni) / Totale Apparecchi.</p>
                 <p>• <span className="font-bold">Coeff. Binaurale:</span> Totale Apparecchi / Numero Clienti Unici.</p>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isWhatsappModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+          <div className="bg-white border border-[#141414] w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+            <div className="p-6 border-b border-[#141414] flex justify-between items-center bg-gray-50">
+              <div>
+                <h3 className="font-serif italic text-2xl flex items-center gap-2 text-emerald-700">
+                  <MessageSquare size={24} /> Invio Messaggi WhatsApp
+                </h3>
+                <p className="text-[10px] uppercase tracking-widest opacity-50">
+                  Tipo: <span className="font-bold">{selectedPatientType}</span> {selectedBranch && <>• Filiale: <span className="font-bold">{selectedBranch}</span></>} • {whatsappTargetPatients.length} Destinatari con telefono
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsWhatsappModalOpen(false)}
+                className="w-10 h-10 flex items-center justify-center border border-[#141414] hover:bg-black hover:text-white transition-all"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 flex flex-col lg:flex-row gap-6">
+              {/* Compositore e Anteprima */}
+              <div className="flex-1 space-y-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] uppercase tracking-widest font-bold opacity-60">Messaggio Template</label>
+                  <textarea
+                    value={whatsappTemplate}
+                    onChange={(e) => setWhatsappTemplate(e.target.value)}
+                    rows={6}
+                    placeholder="Scrivi qui il tuo messaggio template..."
+                    className="w-full p-4 border border-[#141414] font-mono text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-y"
+                  />
+                  <div className="text-[10px] opacity-40 text-right">
+                    {whatsappTemplate.length} caratteri
+                  </div>
+                </div>
+
+                {/* Pulsanti Placeholder */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] uppercase tracking-widest opacity-50">Inserisci Placeholder:</span>
+                  <button
+                    onClick={() => setWhatsappTemplate(prev => prev + " {Nome}")}
+                    className="px-2 py-1 border border-gray-300 hover:border-black font-mono text-[10px] bg-gray-50 active:scale-95 transition-all"
+                  >
+                    {"{Nome}"}
+                  </button>
+                  <button
+                    onClick={() => setWhatsappTemplate(prev => prev + " {Cognome}")}
+                    className="px-2 py-1 border border-gray-300 hover:border-black font-mono text-[10px] bg-gray-50 active:scale-95 transition-all"
+                  >
+                    {"{Cognome}"}
+                  </button>
+                </div>
+
+                {/* Box Anteprima */}
+                {whatsappTargetPatients.length > 0 && (
+                  <div className="border border-dashed border-emerald-500 bg-emerald-50/10 p-4 space-y-2">
+                    <p className="text-[9px] uppercase tracking-widest font-bold text-emerald-800 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                      Anteprima Primo Contatto: ({whatsappTargetPatients[0].nomeCompleto})
+                    </p>
+                    <p className="font-mono text-xs text-gray-700 bg-white p-3 border border-gray-100 italic leading-relaxed whitespace-pre-wrap">
+                      {whatsappTemplate
+                        .replace(/{Nome}/g, whatsappTargetPatients[0].nome || '')
+                        .replace(/{Cognome}/g, whatsappTargetPatients[0].cognome || '')}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Elenco Pazienti con invio link */}
+              <div className="w-full lg:w-96 border-t lg:border-t-0 lg:border-l border-[#141414]/10 pt-6 lg:pt-0 lg:pl-6 flex flex-col max-h-[50vh] lg:max-h-none">
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="text-[10px] uppercase tracking-[0.2em] font-bold opacity-60">Lista Destinatari</h4>
+                  {sentWhatsappIds.length > 0 && (
+                    <button
+                      onClick={() => setSentWhatsappIds([])}
+                      className="text-[9px] text-red-600 hover:underline uppercase tracking-widest font-bold"
+                    >
+                      Resetta inviati ({sentWhatsappIds.length})
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex-1 overflow-y-auto divide-y divide-gray-100 border border-gray-100 p-2 space-y-2">
+                  {whatsappTargetPatients.map((p, idx) => {
+                    const isSent = sentWhatsappIds.includes(p.id);
+                    const personalizedMessage = whatsappTemplate
+                      .replace(/{Nome}/g, p.nome || '')
+                      .replace(/{Cognome}/g, p.cognome || '');
+                    
+                    const waCleanNumber = formatWhatsappNumber(p.telefono);
+                    const clickToChatUrl = `https://wa.me/${waCleanNumber}?text=${encodeURIComponent(personalizedMessage)}`;
+
+                    return (
+                      <div key={p.id || idx} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold truncate text-[#141414]">{p.nomeCompleto}</p>
+                          <p className="font-mono text-[9px] text-gray-400 mt-0.5">{p.telefono || 'Nessun numero'}</p>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          {isSent ? (
+                            <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 border border-emerald-200">
+                              ✓ Inviato
+                            </span>
+                          ) : (
+                            <a
+                              href={clickToChatUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => {
+                                if (p.id) {
+                                  setSentWhatsappIds(prev => [...prev, p.id]);
+                                }
+                              }}
+                              className="px-3 py-1 bg-emerald-600 text-white font-bold text-[10px] uppercase tracking-widest hover:bg-emerald-700 active:scale-95 transition-all inline-block text-center whitespace-nowrap"
+                            >
+                              Invia
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 bg-gray-50 border-t border-[#141414]/10 flex justify-between items-center text-[10px]">
+              <span className="opacity-50">
+                Istruzioni: clicca su "Invia" per aprire la chat di WhatsApp precompilata. Il contatto verrà marcato automaticamente come inviato.
+              </span>
+              <button
+                onClick={() => setIsWhatsappModalOpen(false)}
+                className="px-6 py-2 border border-[#141414] text-[10px] uppercase tracking-widest font-bold hover:bg-gray-100 transition-all active:scale-95"
+              >
+                Chiudi
+              </button>
             </div>
           </div>
         </div>
